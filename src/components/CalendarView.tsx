@@ -1,23 +1,79 @@
 
-import { useState } from 'react';
-import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, parseISO } from 'date-fns';
+import { useState, useEffect } from 'react';
+import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent } from '@/components/ui/card';
 import { useFlowMateStore } from '@/lib/store';
 import { getDaysInCycle } from '@/lib/periodUtils';
 import { motion } from 'framer-motion';
+import { PeriodLog } from '@/lib/types';
+import { Loader2 } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useToast } from '@/components/ui/use-toast';
 
 const CalendarView = () => {
-  const { periodHistory, userPreferences, setActiveDay } = useFlowMateStore();
+  const { periodHistory, userPreferences, setActiveDay, logs, user } = useFlowMateStore();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [selectedLog, setSelectedLog] = useState<PeriodLog | null>(null);
+  const [isLogSheetOpen, setIsLogSheetOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  // Update selected log when the date changes
+  useEffect(() => {
+    if (selectedDate) {
+      loadLogData(selectedDate.toISOString());
+    }
+  }, [selectedDate, logs]);
+
+  const loadLogData = async (dateString: string) => {
+    setIsLoading(true);
+    
+    try {
+      // First check local logs with just the date part (ignoring time)
+      const datePart = dateString.split('T')[0];
+      const localLog = logs.find(log => log.date.startsWith(datePart));
+      
+      if (localLog) {
+        setSelectedLog(localLog);
+      } else {
+        setSelectedLog(null);
+      }
+    } catch (error) {
+      console.error('Error loading log data:', error);
+      toast({
+        variant: "destructive",
+        title: "Error loading data",
+        description: "Could not load log entry for this date",
+      });
+      setSelectedLog(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
       setSelectedDate(date);
       setActiveDay(date.toISOString());
     }
+  };
+
+  const getSymptomLabels = (symptomIds: string[]) => {
+    const symptomMap: {[key: string]: string} = {
+      'headache': 'Headache',
+      'cramps': 'Cramps',
+      'bloating': 'Bloating',
+      'backache': 'Backache',
+      'tender-breasts': 'Tender Breasts',
+      'acne': 'Acne',
+      'fatigue': 'Fatigue',
+      'cravings': 'Cravings',
+    };
+    
+    return symptomIds.map(id => symptomMap[id] || id).join(', ');
   };
 
   return (
@@ -41,11 +97,16 @@ const CalendarView = () => {
               period: (date) => getDaysInCycle(date, periodHistory, userPreferences) === 'period',
               fertile: (date) => getDaysInCycle(date, periodHistory, userPreferences) === 'fertile',
               ovulation: (date) => getDaysInCycle(date, periodHistory, userPreferences) === 'ovulation',
+              hasLog: (date) => {
+                const datePart = date.toISOString().split('T')[0];
+                return logs.some(log => log.date.startsWith(datePart));
+              }
             }}
             modifiersClassNames={{
               period: 'period-day',
               fertile: 'fertile-day',
               ovulation: 'ovulation-day',
+              hasLog: 'has-log-day'
             }}
           />
         </CardContent>
@@ -77,6 +138,14 @@ const CalendarView = () => {
               <div className="w-4 h-4 rounded-full bg-accent"></div>
               <span className="text-sm">Today</span>
             </div>
+            
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <div className="w-4 h-4 rounded-full border border-primary"></div>
+                <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full bg-primary transform -translate-x-1/2 -translate-y-1/2"></div>
+              </div>
+              <span className="text-sm">Has Log</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -99,18 +168,78 @@ const CalendarView = () => {
                 </span>
               </div>
               
-              <Button 
-                size="sm"
-                variant="outline"
-                className="w-full mt-2"
-                onClick={() => setActiveDay(selectedDate.toISOString())}
-              >
-                Add log for this day
-              </Button>
+              {isLoading ? (
+                <div className="flex justify-center py-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : selectedLog ? (
+                <div className="space-y-1 mt-3 text-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium">Flow:</span> 
+                    <span>{selectedLog.flow === 'light' ? '💧' : selectedLog.flow === 'medium' ? '💧💧' : '💧💧💧'} {selectedLog.flow}</span>
+                  </div>
+                  
+                  {selectedLog.mood && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">Mood:</span>
+                      <span>{selectedLog.mood}</span>
+                    </div>
+                  )}
+                  
+                  {selectedLog.symptoms && selectedLog.symptoms.length > 0 && (
+                    <div className="flex gap-1.5">
+                      <span className="font-medium">Symptoms:</span>
+                      <span>{getSymptomLabels(selectedLog.symptoms)}</span>
+                    </div>
+                  )}
+                  
+                  {selectedLog.notes && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full mt-1"
+                      onClick={() => setIsLogSheetOpen(true)}
+                    >
+                      View Notes
+                    </Button>
+                  )}
+                  
+                  <div className="pt-1">
+                    <Button 
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setActiveDay(selectedDate.toISOString())}
+                    >
+                      Edit Log
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button 
+                  size="sm"
+                  variant="outline"
+                  className="w-full mt-2"
+                  onClick={() => setActiveDay(selectedDate.toISOString())}
+                >
+                  Add log for this day
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
+      
+      {/* Sheet for displaying full notes */}
+      <Sheet open={isLogSheetOpen} onOpenChange={setIsLogSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Notes for {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : ''}</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
+            {selectedLog?.notes}
+          </div>
+        </SheetContent>
+      </Sheet>
     </motion.div>
   );
 };
