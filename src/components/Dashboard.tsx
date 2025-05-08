@@ -1,11 +1,14 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useFlowMateStore } from '@/lib/store';
 import { getCurrentCycleStatus, formatDateForDisplay } from '@/lib/periodUtils';
 import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { signOut } from '@/lib/supabase';
+import { toast } from '@/components/ui/sonner';
 
 const moodOptions = [
   { emoji: "😊", label: "Happy" },
@@ -29,7 +32,8 @@ const Dashboard = () => {
     periodHistory, 
     logs,
     startPeriod, 
-    endPeriod 
+    endPeriod,
+    setUser
   } = useFlowMateStore();
   
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
@@ -40,6 +44,15 @@ const Dashboard = () => {
   // Check if there's an active period
   const activePeriod = periodHistory.find(p => p.endDate === null);
   const cycleStatus = getCurrentCycleStatus(periodHistory, userPreferences);
+
+  // Find today's mood from logs
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayLog = logs.find(log => log.date.startsWith(today));
+    if (todayLog?.mood) {
+      setSelectedMood(todayLog.mood);
+    }
+  }, [logs]);
   
   const handlePeriodToggle = () => {
     const today = new Date().toISOString();
@@ -49,6 +62,12 @@ const Dashboard = () => {
       startPeriod(today);
     }
   };
+
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+    toast.success("Logged out successfully");
+  };
   
   return (
     <div className="p-4 space-y-6 max-w-md mx-auto">
@@ -56,33 +75,47 @@ const Dashboard = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="text-center"
+        className="flex justify-between items-center"
       >
         <h1 className="text-2xl font-medium">Hi there!</h1>
-        <p className="text-muted-foreground">{cycleStatus.message}</p>
+        <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
       </motion.div>
+      
+      <p className="text-center text-muted-foreground">{cycleStatus.message}</p>
       
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.1, duration: 0.4 }}
+        className="flex justify-center"
       >
-        <Card className="overflow-hidden border-none shadow-lg">
-          <div className={`p-6 text-center ${
+        <div className={cn(
+          "relative rounded-full p-3 flex items-center justify-center",
+          cycleStatus.status === 'period' 
+            ? 'bg-flowmate-pink/30' 
+            : cycleStatus.status === 'fertile'
+              ? 'bg-flowmate-blue/30'
+              : cycleStatus.status === 'ovulation'
+                ? 'bg-flowmate-purple/30'
+                : 'bg-flowmate-lavender/30'
+        )}>
+          <div className={cn(
+            "rounded-full p-3 flex items-center justify-center",
             cycleStatus.status === 'period' 
-              ? 'bg-flowmate-pink' 
+              ? 'bg-flowmate-pink/50' 
               : cycleStatus.status === 'fertile'
-                ? 'bg-flowmate-blue'
+                ? 'bg-flowmate-blue/50'
                 : cycleStatus.status === 'ovulation'
-                  ? 'bg-flowmate-purple'
-                  : 'bg-flowmate-lavender'
-          }`}>
+                  ? 'bg-flowmate-purple/50'
+                  : 'bg-flowmate-lavender/50'
+          )}>
             <Button 
-              className={`rounded-full w-32 h-32 text-white border-4 ${
+              className={cn(
+                "rounded-full w-36 h-36 text-white shadow-lg transform transition-all duration-300 hover:scale-105",
                 activePeriod 
-                  ? 'bg-rose-500 border-rose-400 hover:bg-rose-600' 
-                  : 'bg-primary border-primary/30 hover:bg-primary/90'
-              }`}
+                  ? 'bg-gradient-to-br from-rose-400 to-rose-500 hover:from-rose-500 hover:to-rose-600' 
+                  : 'bg-gradient-to-br from-primary/90 to-primary hover:from-primary hover:to-primary/90'
+              )}
               onClick={handlePeriodToggle}
             >
               <span className="text-lg font-medium">
@@ -90,39 +123,46 @@ const Dashboard = () => {
               </span>
             </Button>
           </div>
-          
-          <CardContent className="p-4">
-            {periodHistory.length > 0 && (
-              <div className="text-sm text-center mb-4">
-                <p>
-                  {activePeriod 
-                    ? `Period started on ${formatDateForDisplay(activePeriod.startDate)}`
-                    : periodHistory.length > 0 
-                      ? `Last period: ${formatDateForDisplay(periodHistory[periodHistory.length - 1].startDate)}`
-                      : "No period data yet"}
-                </p>
-              </div>
-            )}
-            
-            <div className="mt-4">
-              <h3 className="text-sm font-medium mb-2">How are you feeling today?</h3>
-              <div className="flex justify-center gap-3">
-                {moodOptions.map((mood) => (
-                  <button 
-                    key={mood.label}
-                    className={`p-2 rounded-full ${selectedMood === mood.emoji ? 'bg-muted' : 'hover:bg-muted/50'}`}
-                    onClick={() => setSelectedMood(mood.emoji)}
-                  >
-                    <span className="text-2xl" role="img" aria-label={mood.label}>
-                      {mood.emoji}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        </div>
       </motion.div>
+          
+      <Card className="border-none shadow-md overflow-hidden">
+        <CardContent className="p-4">
+          {periodHistory.length > 0 && (
+            <div className="text-sm text-center mb-4">
+              <p>
+                {activePeriod 
+                  ? `Period started on ${formatDateForDisplay(activePeriod.startDate)}`
+                  : periodHistory.length > 0 
+                    ? `Last period: ${formatDateForDisplay(periodHistory[periodHistory.length - 1].startDate)}`
+                    : "No period data yet"}
+              </p>
+            </div>
+          )}
+          
+          <div className="mt-4">
+            <h3 className="text-sm font-medium mb-2">How are you feeling today?</h3>
+            <div className="flex justify-center gap-3">
+              {moodOptions.map((mood) => (
+                <button 
+                  key={mood.label}
+                  className={cn(
+                    "p-3 rounded-full transition-all transform duration-200",
+                    selectedMood === mood.emoji ? 
+                      'bg-primary/20 scale-110' : 
+                      'hover:bg-muted/50 hover:scale-105'
+                  )}
+                  onClick={() => setSelectedMood(mood.emoji)}
+                >
+                  <span className="text-2xl" role="img" aria-label={mood.label}>
+                    {mood.emoji}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
       <motion.div
         initial={{ opacity: 0, y: 20 }}

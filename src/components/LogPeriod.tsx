@@ -8,6 +8,9 @@ import { useFlowMateStore } from '@/lib/store';
 import { PeriodLog } from '@/lib/types';
 import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
+import { getPeriodLog } from '@/lib/supabase';
+import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 
 const flowOptions = [
   { value: 'light', label: 'Light', emoji: '💧' },
@@ -37,32 +40,70 @@ const symptomOptions = [
 ];
 
 const LogPeriod = () => {
-  const { activeDay, logs, addLog, updateLog } = useFlowMateStore();
+  const { activeDay, logs, addLog, updateLog, user } = useFlowMateStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedFlow, setSelectedFlow] = useState<string>('medium');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [notes, setNotes] = useState<string>('');
   const [existingLog, setExistingLog] = useState<PeriodLog | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     if (activeDay) {
       setSelectedDate(parseISO(activeDay));
+      loadLogData(activeDay);
+    } else {
+      // If no active day is set, use today
+      const today = new Date();
+      setSelectedDate(today);
+      loadLogData(today.toISOString());
+    }
+  }, [activeDay]);
+
+  const loadLogData = async (dateString: string) => {
+    setIsLoading(true);
+    
+    try {
+      // First check local logs
+      const localLog = logs.find(log => log.date.startsWith(dateString.split('T')[0]));
       
-      // Check for existing log
-      const foundLog = logs.find(log => log.date === activeDay);
-      if (foundLog) {
-        setExistingLog(foundLog);
-        setSelectedFlow(foundLog.flow);
-        setSelectedMood(foundLog.mood || null);
-        setSelectedSymptoms(foundLog.symptoms || []);
-        setNotes(foundLog.notes || '');
+      if (localLog) {
+        setExistingLog(localLog);
+        setSelectedFlow(localLog.flow);
+        setSelectedMood(localLog.mood || null);
+        setSelectedSymptoms(localLog.symptoms || []);
+        setNotes(localLog.notes || '');
+      } else if (user) {
+        // If not found locally and user is logged in, check database
+        const remoteLog = await getPeriodLog(dateString.split('T')[0]);
+        
+        if (remoteLog) {
+          setExistingLog(remoteLog);
+          setSelectedFlow(remoteLog.flow);
+          setSelectedMood(remoteLog.mood || null);
+          setSelectedSymptoms(remoteLog.symptoms || []);
+          setNotes(remoteLog.notes || '');
+        } else {
+          // No log found anywhere
+          resetForm();
+        }
       } else {
         resetForm();
       }
+    } catch (error) {
+      console.error('Error loading log data:', error);
+      toast({
+        variant: "destructive",
+        title: "Error loading data",
+        description: "Could not load your previous log entry",
+      });
+      resetForm();
+    } finally {
+      setIsLoading(false);
     }
-  }, [activeDay, logs]);
+  };
 
   const resetForm = () => {
     setSelectedFlow('medium');
@@ -81,27 +122,35 @@ const LogPeriod = () => {
   };
 
   const handleSaveLog = () => {
-    if (activeDay) {
-      const logData: PeriodLog = {
-        date: activeDay,
-        flow: selectedFlow as 'light' | 'medium' | 'heavy',
-        mood: selectedMood || undefined,
-        symptoms: selectedSymptoms,
-        notes: notes.trim() || undefined
-      };
+    const dateString = selectedDate.toISOString().split('T')[0] + 'T00:00:00.000Z';
+    
+    const logData: PeriodLog = {
+      date: dateString,
+      flow: selectedFlow as 'light' | 'medium' | 'heavy',
+      mood: selectedMood || undefined,
+      symptoms: selectedSymptoms,
+      notes: notes.trim() || undefined
+    };
 
-      if (existingLog) {
-        updateLog(activeDay, logData);
-      } else {
-        addLog(logData);
-      }
-
-      toast({
-        title: "Log saved",
-        description: "Your period data has been recorded",
-      });
+    if (existingLog) {
+      updateLog(dateString, logData);
+    } else {
+      addLog(logData);
     }
+
+    toast({
+      title: "Log saved",
+      description: "Your period data has been recorded",
+    });
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-4 flex items-center justify-center h-[70vh]">
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -123,7 +172,12 @@ const LogPeriod = () => {
               <Button
                 key={option.value}
                 variant={selectedFlow === option.value ? "default" : "outline"}
-                className={`flex-1 ${selectedFlow === option.value ? '' : 'border-dashed'}`}
+                className={cn(
+                  "flex-1 transition-all",
+                  selectedFlow === option.value 
+                    ? '' 
+                    : 'border-dashed hover:bg-muted/30'
+                )}
                 onClick={() => setSelectedFlow(option.value)}
               >
                 <div className="text-center">
@@ -145,11 +199,12 @@ const LogPeriod = () => {
             {moodOptions.map((mood) => (
               <button
                 key={mood.label}
-                className={`p-2 rounded-full text-center ${
-                  selectedMood === mood.emoji 
-                    ? 'bg-primary/10 ring-1 ring-primary' 
-                    : 'hover:bg-muted'
-                }`}
+                className={cn(
+                  "p-2 rounded-full text-center transition-all transform duration-200",
+                  selectedMood === mood.emoji ? 
+                    'bg-primary/20 scale-110 ring-1 ring-primary' : 
+                    'hover:bg-muted hover:scale-105'
+                )}
                 onClick={() => setSelectedMood(mood.emoji)}
               >
                 <span className="text-xl block">{mood.emoji}</span>
@@ -170,7 +225,10 @@ const LogPeriod = () => {
               <Button
                 key={symptom.id}
                 variant={selectedSymptoms.includes(symptom.id) ? "default" : "outline"}
-                className={selectedSymptoms.includes(symptom.id) ? '' : 'border-dashed'}
+                className={cn(
+                  "transition-all",
+                  selectedSymptoms.includes(symptom.id) ? '' : 'border-dashed hover:bg-muted/30'
+                )}
                 onClick={() => handleSymptomToggle(symptom.id)}
               >
                 {symptom.label}
@@ -193,7 +251,10 @@ const LogPeriod = () => {
           />
         </CardContent>
         <CardFooter>
-          <Button className="w-full" onClick={handleSaveLog}>
+          <Button 
+            className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary"
+            onClick={handleSaveLog}
+          >
             Save Log
           </Button>
         </CardFooter>

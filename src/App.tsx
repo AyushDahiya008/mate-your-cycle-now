@@ -11,17 +11,26 @@ import Dashboard from "./components/Dashboard";
 import CalendarView from "./components/CalendarView";
 import LogPeriod from "./components/LogPeriod";
 import Navigation from "./components/Navigation";
+import Auth from "./components/Auth";
+import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   const [showSplash, setShowSplash] = useState(true);
-  const { onboardingComplete, currentView } = useFlowMateStore();
+  const { 
+    onboardingComplete, 
+    currentView, 
+    user, 
+    isLoading,
+    fetchUserData 
+  } = useFlowMateStore();
   
-  // Hydrate the store when the app loads
+  // Hydrate the store and check auth status when the app loads
   useEffect(() => {
     useFlowMateStore.persist.rehydrate();
-  }, []);
+    fetchUserData();
+  }, [fetchUserData]);
   
   // Handle splash screen completion
   const handleSplashComplete = () => {
@@ -55,6 +64,15 @@ const App = () => {
     }
   };
 
+  // Show loader if we're checking auth status
+  if (isLoading && !showSplash) {
+    return (
+      <div className="min-h-screen flowmate-gradient flex items-center justify-center">
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+      </div>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -65,6 +83,11 @@ const App = () => {
           <SplashScreen onComplete={handleSplashComplete} />
         ) : !onboardingComplete ? (
           <Onboarding onComplete={() => {}} />
+        ) : !user ? (
+          // Show auth screen if not logged in
+          <div className="min-h-screen flowmate-gradient">
+            <Auth />
+          </div>
         ) : (
           <div className="min-h-screen flowmate-gradient pb-20">
             {renderMainContent()}
