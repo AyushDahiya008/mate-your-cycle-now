@@ -32,6 +32,16 @@ export type FlowMateState = {
   logs: PeriodLog[];
   currentView: 'dashboard' | 'calendar' | 'log' | 'insights' | 'settings';
   activeDay: string | null; // ISO string for currently selected day
+  
+  // Actions
+  completeOnboarding: () => void;
+  updatePreferences: (preferences: Partial<UserPreferences>) => void;
+  startPeriod: (date: string) => void;
+  endPeriod: (date: string) => void;
+  setCurrentView: (view: FlowMateState['currentView']) => void;
+  setActiveDay: (day: string | null) => void;
+  addLog: (log: PeriodLog) => void;
+  updateLog: (date: string, data: Partial<PeriodLog>) => void;
 };
 
 export type CycleStatus = {

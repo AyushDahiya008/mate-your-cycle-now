@@ -1,7 +1,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FlowMateState, UserPreferences } from './types';
+import { FlowMateState, UserPreferences, PeriodLog } from './types';
 
 const defaultPreferences: UserPreferences = {
   averageCycleLength: 28,
@@ -76,11 +76,11 @@ export const useFlowMateStore = create<FlowMateState>()(
       
       setActiveDay: (day: string | null) => set({ activeDay: day }),
       
-      addLog: (log) => set(state => ({
+      addLog: (log: PeriodLog) => set(state => ({
         logs: [...state.logs, log]
       })),
       
-      updateLog: (date, data) => set(state => {
+      updateLog: (date: string, data: Partial<PeriodLog>) => set(state => {
         const logIndex = state.logs.findIndex(l => l.date === date);
         
         if (logIndex >= 0) {
