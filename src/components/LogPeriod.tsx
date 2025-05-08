@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,7 +10,13 @@ import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
 import { getPeriodLog } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CalendarIcon } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 const flowOptions = [
   { value: 'light', label: 'Light', emoji: '💧' },
@@ -42,6 +48,7 @@ const symptomOptions = [
 const LogPeriod = () => {
   const { activeDay, logs, addLog, updateLog, user } = useFlowMateStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isDatePopoverOpen, setIsDatePopoverOpen] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState<string>('medium');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
@@ -52,8 +59,10 @@ const LogPeriod = () => {
 
   useEffect(() => {
     if (activeDay) {
-      setSelectedDate(parseISO(activeDay));
-      loadLogData(activeDay);
+      // Make sure we're using the correct date format with timezone consideration
+      const activeDate = new Date(activeDay);
+      setSelectedDate(activeDate);
+      loadLogData(activeDate.toISOString());
     } else {
       // If no active day is set, use today
       const today = new Date();
@@ -66,8 +75,11 @@ const LogPeriod = () => {
     setIsLoading(true);
     
     try {
+      // Format date string to ensure consistent date (YYYY-MM-DD) format
+      const datePart = dateString.split('T')[0];
+      
       // First check local logs
-      const localLog = logs.find(log => log.date.startsWith(dateString.split('T')[0]));
+      const localLog = logs.find(log => log.date.startsWith(datePart));
       
       if (localLog) {
         setExistingLog(localLog);
@@ -77,7 +89,7 @@ const LogPeriod = () => {
         setNotes(localLog.notes || '');
       } else if (user) {
         // If not found locally and user is logged in, check database
-        const remoteLog = await getPeriodLog(dateString.split('T')[0]);
+        const remoteLog = await getPeriodLog(datePart);
         
         if (remoteLog) {
           setExistingLog(remoteLog);
@@ -121,8 +133,18 @@ const LogPeriod = () => {
     );
   };
 
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      loadLogData(date.toISOString());
+      setIsDatePopoverOpen(false);
+    }
+  };
+
   const handleSaveLog = () => {
-    const dateString = selectedDate.toISOString().split('T')[0] + 'T00:00:00.000Z';
+    // Format date as YYYY-MM-DDT00:00:00.000Z to ensure consistent date storage
+    // This fixes the date mismatch issue when saving logs
+    const dateString = `${selectedDate.toISOString().split('T')[0]}T00:00:00.000Z`;
     
     const logData: PeriodLog = {
       date: dateString,
@@ -140,7 +162,7 @@ const LogPeriod = () => {
 
     toast({
       title: "Log saved",
-      description: "Your period data has been recorded",
+      description: `Your period data has been recorded for ${format(selectedDate, 'MMMM d, yyyy')}`,
     });
   };
 
@@ -158,9 +180,28 @@ const LogPeriod = () => {
       animate={{ opacity: 1 }}
       className="p-4 max-w-md mx-auto space-y-4"
     >
-      <h1 className="text-2xl font-medium text-center">
-        {format(selectedDate, 'MMMM d, yyyy')}
-      </h1>
+      <div className="flex justify-center">
+        <Popover open={isDatePopoverOpen} onOpenChange={setIsDatePopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button 
+              variant="outline"
+              className="flex gap-2 items-center"
+            >
+              <CalendarIcon className="h-4 w-4" />
+              {format(selectedDate, 'MMMM d, yyyy')}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="center">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={handleDateSelect}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
       
       <Card className="border-none shadow-lg">
         <CardHeader className="pb-2">

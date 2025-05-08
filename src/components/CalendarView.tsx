@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,16 +24,18 @@ const CalendarView = () => {
   // Update selected log when the date changes
   useEffect(() => {
     if (selectedDate) {
-      loadLogData(selectedDate.toISOString());
+      loadLogData(selectedDate);
     }
   }, [selectedDate, logs]);
 
-  const loadLogData = async (dateString: string) => {
+  const loadLogData = async (date: Date) => {
     setIsLoading(true);
     
     try {
-      // First check local logs with just the date part (ignoring time)
-      const datePart = dateString.split('T')[0];
+      // Format date string to ensure consistent date (YYYY-MM-DD) format
+      const datePart = date.toISOString().split('T')[0];
+      
+      // Check local logs with just the date part (ignoring time)
       const localLog = logs.find(log => log.date.startsWith(datePart));
       
       if (localLog) {
@@ -92,7 +94,7 @@ const CalendarView = () => {
             onSelect={handleDateSelect}
             month={calendarDate}
             onMonthChange={setCalendarDate}
-            className="mx-auto"
+            className="mx-auto pointer-events-auto"
             modifiers={{
               period: (date) => getDaysInCycle(date, periodHistory, userPreferences) === 'period',
               fertile: (date) => getDaysInCycle(date, periodHistory, userPreferences) === 'fertile',

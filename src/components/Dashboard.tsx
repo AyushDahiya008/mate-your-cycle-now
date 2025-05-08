@@ -9,6 +9,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { signOut } from '@/lib/supabase';
 import { toast } from '@/components/ui/sonner';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
 
 const moodOptions = [
   { emoji: "😊", label: "Happy" },
@@ -37,6 +44,8 @@ const Dashboard = () => {
   } = useFlowMateStore();
   
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
+  const [periodStartDate, setPeriodStartDate] = useState<Date>(new Date());
+  const [periodDateOpen, setPeriodDateOpen] = useState(false);
   
   // Get tip of the day (pseudo-random based on date)
   const todaysTip = tips[new Date().getDate() % tips.length];
@@ -54,13 +63,21 @@ const Dashboard = () => {
     }
   }, [logs]);
   
-  const handlePeriodToggle = () => {
-    const today = new Date().toISOString();
-    if (activePeriod) {
-      endPeriod(today);
-    } else {
-      startPeriod(today);
+  const handlePeriodDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setPeriodStartDate(date);
     }
+  };
+
+  const handleStartPeriod = () => {
+    startPeriod(periodStartDate.toISOString());
+    toast.success("Period start date recorded");
+    setPeriodDateOpen(false);
+  };
+
+  const handleEndPeriod = () => {
+    endPeriod(new Date().toISOString());
+    toast.success("Period ended");
   };
 
   const handleLogout = async () => {
@@ -109,19 +126,45 @@ const Dashboard = () => {
                   ? 'bg-flowmate-purple/50'
                   : 'bg-flowmate-lavender/50'
           )}>
-            <Button 
-              className={cn(
-                "rounded-full w-36 h-36 text-white shadow-lg transform transition-all duration-300 hover:scale-105",
-                activePeriod 
-                  ? 'bg-gradient-to-br from-rose-400 to-rose-500 hover:from-rose-500 hover:to-rose-600' 
-                  : 'bg-gradient-to-br from-primary/90 to-primary hover:from-primary hover:to-primary/90'
-              )}
-              onClick={handlePeriodToggle}
-            >
-              <span className="text-lg font-medium">
-                {activePeriod ? 'End Period' : 'Start Period'}
-              </span>
-            </Button>
+            {activePeriod ? (
+              <Button 
+                className="rounded-full w-36 h-36 text-white shadow-lg transform transition-all duration-300 hover:scale-105 bg-gradient-to-br from-rose-400 to-rose-500 hover:from-rose-500 hover:to-rose-600"
+                onClick={handleEndPeriod}
+              >
+                <span className="text-lg font-medium">End Period</span>
+              </Button>
+            ) : (
+              <Popover open={periodDateOpen} onOpenChange={setPeriodDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button 
+                    className="rounded-full w-36 h-36 text-white shadow-lg transform transition-all duration-300 hover:scale-105 bg-gradient-to-br from-primary/90 to-primary hover:from-primary hover:to-primary/90"
+                  >
+                    <div className="text-center">
+                      <span className="text-lg font-medium">When did your period start?</span>
+                    </div>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4" align="center">
+                  <div className="space-y-4">
+                    <h3 className="font-medium text-center">Select Period Start Date</h3>
+                    <Calendar
+                      mode="single"
+                      selected={periodStartDate}
+                      onSelect={handlePeriodDateSelect}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                      disabled={(date) => date > new Date()}
+                    />
+                    <Button 
+                      className="w-full"
+                      onClick={handleStartPeriod}
+                    >
+                      Confirm Start Date
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         </div>
       </motion.div>
